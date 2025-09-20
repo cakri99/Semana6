@@ -1,157 +1,120 @@
 import java.awt.*;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.List;
 import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
 
 public class AgendaApp extends JFrame {
-    private Agenda agenda;
-    private DefaultListModel<String> listaModelo;
-    private JList<String> listaContactos;
+    private ContactoDAO dao = new ContactoDAO();
+    private JTable table;
+    private DefaultTableModel model;
     private JTextField txtNombre, txtTelefono, txtCorreo, txtBuscar;
 
     public AgendaApp() {
-        super("Agenda de Contactos"); // <- aquí fijamos el título de la ventana
-        agenda = new Agenda();
-        listaModelo = new DefaultListModel<>();
-        listaContactos = new JList<>(listaModelo);
-
+        setTitle("Agenda de Contactos");
+        setSize(600, 400);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(600, 450);
-        setLocationRelativeTo(null);
-        setLayout(new BorderLayout(8, 8));
+        setLayout(new BorderLayout());
 
-        // --- Panel formulario (NORTE)
-        JPanel panelFormulario = new JPanel(new GridLayout(4, 2, 5, 5));
-        panelFormulario.setBorder(BorderFactory.createTitledBorder("Nuevo contacto"));
-        panelFormulario.add(new JLabel("Nombre:"));
+        // Panel superior
+        JPanel panelForm = new JPanel(new GridLayout(4, 2));
+        panelForm.add(new JLabel("Nombre:"));
         txtNombre = new JTextField();
-        panelFormulario.add(txtNombre);
+        panelForm.add(txtNombre);
 
-        panelFormulario.add(new JLabel("Teléfono:"));
+        panelForm.add(new JLabel("Telefono:"));
         txtTelefono = new JTextField();
-        panelFormulario.add(txtTelefono);
+        panelForm.add(txtTelefono);
 
-        panelFormulario.add(new JLabel("Correo:"));
+        panelForm.add(new JLabel("Correo:"));
         txtCorreo = new JTextField();
-        panelFormulario.add(txtCorreo);
+        panelForm.add(txtCorreo);
 
         JButton btnAgregar = new JButton("Agregar");
-        JButton btnExportar = new JButton("Exportar CSV");
-        panelFormulario.add(btnAgregar);
-        panelFormulario.add(btnExportar);
+        btnAgregar.addActionListener(e -> agregarContacto());
+        panelForm.add(btnAgregar);
 
-        add(panelFormulario, BorderLayout.NORTH);
+        add(panelForm, BorderLayout.NORTH);
 
-        // --- Centro: lista de contactos
-        JPanel centro = new JPanel(new BorderLayout());
-        centro.setBorder(BorderFactory.createTitledBorder("Contactos"));
-        centro.add(new JScrollPane(listaContactos), BorderLayout.CENTER);
+        // Tabla
+        model = new DefaultTableModel(new String[]{"ID", "Nombre", "Telefono", "Correo"}, 0);
+        table = new JTable(model);
+        add(new JScrollPane(table), BorderLayout.CENTER);
 
-        JPanel botonesCentro = new JPanel();
-        JButton btnVer = new JButton("Ver detalle");
-        JButton btnEliminar = new JButton("Eliminar seleccionado");
-        botonesCentro.add(btnVer);
-        botonesCentro.add(btnEliminar);
-        centro.add(botonesCentro, BorderLayout.SOUTH);
-
-        add(centro, BorderLayout.CENTER);
-
-        // --- Sur: búsqueda
-        JPanel panelBusqueda = new JPanel();
-        panelBusqueda.setBorder(BorderFactory.createTitledBorder("Buscar"));
-        panelBusqueda.add(new JLabel("Nombre:"));
+        // Panel inferior
+        JPanel panelBottom = new JPanel();
         txtBuscar = new JTextField(15);
-        panelBusqueda.add(txtBuscar);
         JButton btnBuscar = new JButton("Buscar");
-        JButton btnMostrarTodos = new JButton("Mostrar todos");
-        panelBusqueda.add(btnBuscar);
-        panelBusqueda.add(btnMostrarTodos);
-        add(panelBusqueda, BorderLayout.SOUTH);
+        btnBuscar.addActionListener(e -> buscarContacto());
+        JButton btnExportar = new JButton("Exportar a CSV");
+        btnExportar.addActionListener(e -> exportarCSV());
 
-        // --- Listeners
-        btnAgregar.addActionListener(e -> {
-            String nombre = txtNombre.getText().trim();
-            String telefono = txtTelefono.getText().trim();
-            String correo = txtCorreo.getText().trim();
-            if (nombre.isEmpty() || telefono.isEmpty() || correo.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Rellena todos los campos.", "Atención", JOptionPane.WARNING_MESSAGE);
-                return;
-            }
-            Contacto c = new Contacto(nombre, telefono, correo);
-            agenda.agregarContacto(c);
-            listaModelo.addElement(c.toString());
-            txtNombre.setText("");
-            txtTelefono.setText("");
-            txtCorreo.setText("");
-        });
+        panelBottom.add(new JLabel("Buscar:"));
+        panelBottom.add(txtBuscar);
+        panelBottom.add(btnBuscar);
+        panelBottom.add(btnExportar);
 
-        btnBuscar.addActionListener(e -> {
-            String q = txtBuscar.getText().trim();
-            List<Contacto> encontrados = agenda.buscarPorNombre(q);
-            actualizarLista(encontrados);
-        });
+        add(panelBottom, BorderLayout.SOUTH);
 
-        btnMostrarTodos.addActionListener(e -> mostrarTodos());
-
-        btnExportar.addActionListener(e -> {
-            JFileChooser chooser = new JFileChooser();
-            chooser.setSelectedFile(new java.io.File("contactos.csv"));
-            int res = chooser.showSaveDialog(this);
-            if (res == JFileChooser.APPROVE_OPTION) {
-                java.io.File f = chooser.getSelectedFile();
-                try {
-                    agenda.exportarExcel(f.getAbsolutePath());
-                    JOptionPane.showMessageDialog(this, "Exportado a: " + f.getAbsolutePath());
-                } catch (IOException ex) {
-                    JOptionPane.showMessageDialog(this, "Error al exportar: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
-                }
-            }
-        });
-
-        btnEliminar.addActionListener(e -> {
-            int idx = listaContactos.getSelectedIndex();
-            if (idx == -1) {
-                JOptionPane.showMessageDialog(this, "Selecciona un contacto para eliminar.");
-                return;
-            }
-            String seleccionado = listaModelo.getElementAt(idx);
-            Contacto toRemove = null;
-            for (Contacto c : agenda.getContactos()) {
-                if (c.toString().equals(seleccionado)) {
-                    toRemove = c;
-                    break;
-                }
-            }
-            if (toRemove != null) {
-                agenda.getContactos().remove(toRemove);
-                listaModelo.remove(idx);
-            }
-        });
-
-        btnVer.addActionListener(e -> {
-            int idx = listaContactos.getSelectedIndex();
-            if (idx == -1) {
-                JOptionPane.showMessageDialog(this, "Selecciona un contacto.");
-                return;
-            }
-            String sel = listaModelo.getElementAt(idx);
-            JOptionPane.showMessageDialog(this, sel, "Detalle", JOptionPane.INFORMATION_MESSAGE);
-        });
-
-        // Mostrar ventana
-        setVisible(true);
+        cargarContactos();
     }
 
-    private void actualizarLista(List<Contacto> lista) {
-        listaModelo.clear();
-        for (Contacto c : lista) listaModelo.addElement(c.toString());
+    private void agregarContacto() {
+        String nombre = txtNombre.getText();
+        String telefono = txtTelefono.getText();
+        String correo = txtCorreo.getText();
+
+        if (!nombre.isEmpty() && !telefono.isEmpty() && !correo.isEmpty()) {
+            try {
+                dao.agregar(new Contacto(0, nombre, telefono, correo));
+                JOptionPane.showMessageDialog(this, "Contacto agregado!");
+                cargarContactos();
+                txtNombre.setText("");
+                txtTelefono.setText("");
+                txtCorreo.setText("");
+            } catch (Exception e) {
+                JOptionPane.showMessageDialog(this, "Error al agregar contacto: " + e.getMessage());
+                e.printStackTrace();
+            }
+        } else {
+            JOptionPane.showMessageDialog(this, "Completa todos los campos");
+        }
     }
 
-    private void mostrarTodos() {
-        actualizarLista(agenda.getContactos());
+    private void cargarContactos() {
+        model.setRowCount(0);
+        List<Contacto> lista = dao.listar();
+        for (Contacto c : lista) {
+            model.addRow(new Object[]{c.getId(), c.getNombre(), c.getTelefono(), c.getCorreo()});
+        }
+    }
+
+    private void buscarContacto() {
+        String nombre = txtBuscar.getText();
+        model.setRowCount(0);
+        List<Contacto> lista = dao.buscar(nombre);
+        for (Contacto c : lista) {
+            model.addRow(new Object[]{c.getId(), c.getNombre(), c.getTelefono(), c.getCorreo()});
+        }
+    }
+
+    private void exportarCSV() {
+        try (FileWriter fw = new FileWriter("contactos.csv")) {
+            for (int i = 0; i < model.getRowCount(); i++) {
+                fw.write(
+                    model.getValueAt(i, 1) + "," +
+                    model.getValueAt(i, 2) + "," +
+                    model.getValueAt(i, 3) + "\n"
+                );
+            }
+            JOptionPane.showMessageDialog(this, "Exportado a contactos.csv");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(AgendaApp::new);
+        SwingUtilities.invokeLater(() -> new AgendaApp().setVisible(true));
     }
 }
